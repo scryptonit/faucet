@@ -1,0 +1,4 @@
+loguru
+requests
+primp
+2captcha-python
