@@ -7,7 +7,7 @@ import primp
 
 # ================================CONFIG=================================================
 
-CAPTCHA_API = "eb33c2c2b39185b7e8d714fa985f3946"
+CAPTCHA_API = ""
 SITE_KEY = "0x4AAAAAABDerdTw43kK5pDL"
 TARGET_PAGE = "https://faucet.testnet.riselabs.xyz/"
 API_ENDPOINT = "https://faucet-api.riselabs.xyz/faucet/multi-request"
@@ -19,42 +19,50 @@ RESULT_LOG = "results.txt"
 MIN_PAUSE, MAX_PAUSE = 10, 20
 ATTEMPTS_PER_WALLET = 3
 VALID_CHROME_VERSIONS = ["chrome_130", "chrome_131", "chrome_133"]
-
+UA_MAP = {
+    "chrome_130": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "chrome_131": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "chrome_133": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+}
 # =================================================================================
 
 def get_primp_client(proxy_str: str):
     host, port, user, passwd = proxy_str.strip().split(":")
     proxy = f"http://{user}:{passwd}@{host}:{port}"
     chrome_version = random.choice(VALID_CHROME_VERSIONS)
-    return primp.Client(impersonate=chrome_version, proxy=proxy)
+    ua = UA_MAP[chrome_version]
+    client = primp.Client(impersonate=chrome_version, proxy=proxy)
+    return client, ua
 
 
-def solve_captcha(proxy_str: str):
+def solve_captcha(proxy_str: str, user_agent: str):
     try:
         solver = TwoCaptcha(CAPTCHA_API)
         host, port, user, passwd = proxy_str.strip().split(":")
-        proxy_payload = {'type': 'HTTP', 'uri': f'{user}:{passwd}@{host}:{port}'}
+        proxy_payload = {
+            'type': 'HTTP',              # либо 'HTTPS' если у вас HTTPS-прокси
+            'uri': f'{user}:{passwd}@{host}:{port}',
+            'userAgent': user_agent,
+        }
         result = solver.turnstile(sitekey=SITE_KEY, url=TARGET_PAGE, proxy=proxy_payload)
-        if token := result.get("code"):
-            logger.info("Captcha solved via proxy")
-            return token
-        logger.error(f"Captcha token is empty. Response: {result}")
+        return result.get("code")
     except Exception as err:
         logger.error(f"Captcha solving error: {err}")
-    return None
+        return None
 
 
 def wallet_process(addr: str, proxy_data: str, position: int):
     logger.info(f"[{position}] Wallet: {addr}")
     try:
-        client = get_primp_client(proxy_data)
+        client, user_agent = get_primp_client(proxy_data)
     except Exception as e:
         logger.error(f"[{position}] Client creation failed: {e}")
         return save_result(addr, success=False)
 
     for attempt in range(1, ATTEMPTS_PER_WALLET + 1):
         logger.info(f"[{position}] Attempt #{attempt}")
-        if not (captcha_token := solve_captcha(proxy_data)):
+        captcha_token = solve_captcha(proxy_data, user_agent)
+        if not captcha_token:
             time.sleep(5)
             continue
         try:
@@ -67,6 +75,8 @@ def wallet_process(addr: str, proxy_data: str, position: int):
             headers = {
                 'origin': 'https://faucet.testnet.riselabs.xyz',
                 'referer': 'https://faucet.testnet.riselabs.xyz',
+                'user-agent': user_agent,
+
             }
 
             resp = client.post(API_ENDPOINT, json=payload, headers=headers, timeout=60)
@@ -106,7 +116,7 @@ def main():
     tasks = [(w, p) for w, p in zip(wallets, proxies) if w not in already_done]
     random.shuffle(tasks)
 
-    logger.info(f"Wallets to processr: {len(tasks)} / {len(wallets)}")
+    logger.info(f"Wallets to process: {len(tasks)} / {len(wallets)}")
     if not tasks: return
 
     for idx, (wallet, proxy) in enumerate(tasks, 1):
