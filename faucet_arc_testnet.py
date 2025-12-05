@@ -17,7 +17,7 @@ PROXY_PATH = "proxies.txt"
 RESULT_LOG = "results.txt"
 
 MIN_PAUSE, MAX_PAUSE = 10, 20
-ATTEMPTS_PER_WALLET = 3
+ATTEMPTS_PER_WALLET = 5
 VALID_CHROME_VERSIONS = ["chrome_130", "chrome_131", "chrome_133"]
 UA_MAP = {
     "chrome_130": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
